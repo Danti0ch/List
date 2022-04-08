@@ -5,13 +5,15 @@
 #include <windows.h>
 #include <sys\stat.h> 
 
+//----------------------LOCAL-FUNCTIONS-DECLARATION-----------------------//
+
 #define list_resize(obj, mode) _list_resize((obj), (mode), #obj, LOCATION)
 
-#define  get_ind_of_free(obj) _get_ind_of_free((obj), #obj, LOCATION)
+#define  extract_free_ind(obj) _extract_free_ind((obj), #obj, LOCATION)
 
 ERR_CODE _list_resize(list* obj, int mode, META_PARAMS);
 
-int _get_ind_of_free(list* obj, META_PARAMS);
+int _extract_free_ind(list* obj, META_PARAMS);
 
 int node_cmp(const void * node1, const void * node2);
 
@@ -25,35 +27,58 @@ void print_list(list* obj);
 
 int get_file_size(const char* name);
 
-//---------------------------------------------------------------------------------------//
+// checker that node is in list
+inline int node_in_list(list* obj, node* nod){
+	if(nod >= obj->nodes + obj->size || nod < obj->nodes){
+		return 0;
+	}
+	return 1;
+}
 
-ERR_CODE _ListConstructor(list* obj, const int capacity, META_PARAMS){
+typedef unsigned int uint;
+
+// вставляем в любом случае за единицу
+// в любом случае реализую is_sorted, сортировку, сверхбыструю адресацию по логическим адресам
+// так как поиск энивей за O(n), будем сортить предподсчётом за O(n), нужно прописать в доку, что юзается много памяти
+
+// TODO: может быть ошибка при вставке на позицию size
+// TODO: слишком много ифов в методах, нужна оптимизация
+// TODO: более продуманые ресайзы
+// TODO: аккуратно проставить is_sorted = UNSORTED в методах вставки/удаления
+
+//----------------------PUBLIC-FUNCTIONS-DEFINITIONS----------------------//
+
+// OK
+ERR_CODE _ListConstructor(list* obj, const size_t capacity, META_PARAMS){
 
 	assert(obj != NULL);
 
-	if(capacity > 0){
-		obj->nodes = (node*)calloc(capacity, sizeof(node));
-		
-		if(obj->nodes == NULL){
-			return ERR_CODE::MEM_ALLOC;
-		}
+	if(capacity == 0) obj = NULL;
+
+	obj->nodes = (node*)calloc(capacity, sizeof(node));
+
+	if(obj->nodes == NULL){
+		return ERR_CODE::MEM_ALLOC;
 	}
 
-	for(int n_node = 1; n_node < capacity; n_node++){
+	// создаем односвязный список свободных элементов
+	// индикатор незанятости элемента - FREE_MATE в prev
+	for(int n_node = 0; n_node < capacity; n_node++){
+		obj->nodes[n_node].val  = POISON_VAL;
 		obj->nodes[n_node].next = n_node + 1;
-		obj->nodes[n_node].prev = FREE_INDICATION_VAL;
+		obj->nodes[n_node].prev = FREE_MATE;
 	}
 
-	obj->nodes[capacity - 1].next = 0;
+	obj->nodes[capacity - 1].next = POINTER_TO_VOID;
 
-	obj->is_sorted 	= VAL_SORTED;
-	
-	obj->head 		= 0;
-	obj->tail 		= 0;
-	
-	obj->head_free 	= 1;
+	obj->is_sorted 	= SORTED;
+
+	obj->head 		= FREE_MATE;
+	obj->tail 		= FREE_MATE;
+
+	obj->head_free 	= 0;
 	obj->tail_free 	= capacity - 1;
-	
+
 	obj->size 		= 0;
 	obj->capacity 	= capacity;
 
@@ -61,66 +86,95 @@ ERR_CODE _ListConstructor(list* obj, const int capacity, META_PARAMS){
 
 	return ERR_CODE::OK;
 }
+//----------------------------------------------------------------------------------------//
 
+// OK
 ERR_CODE _ListDestructor(list* obj, META_PARAMS){
 
 	assert(obj != NULL);
 	LIST_OK(obj)
 
 	free(obj->nodes);
-	obj->nodes = (node*)FREE_MEM_POINTER_VAL;
+	obj->nodes = (node*)FREE_MEM;
 
-	obj->head 		= -1;
-	obj->tail 		= -1;
-	obj->head_free  = -1;
-	obj->capacity 	= -1;
-	obj->size 		= -1;
+	obj->head 		= FREE_MATE;
+	obj->tail 		= FREE_MATE;
+	obj->head_free  = FREE_MATE;
+	obj->tail_free  = FREE_MATE;
+	obj->capacity 	= 0;
+	obj->size 		= 0;
+	obj->is_sorted  = 1;
 
 	return ERR_CODE::OK;
 }
+//----------------------------------------------------------------------------------------//
 
+// OK
 node* _ListFront(list* obj, META_PARAMS){
 
 	assert(obj != NULL);
 	LIST_OK(obj)
 
-	if(obj->size > 0) return &(obj->nodes[obj->head]);
+	if(obj->size > 0) return obj->nodes + obj->head;
 	else return NULL;
 }
+//----------------------------------------------------------------------------------------//
 
+// OK
 node* _ListBack(list* obj, META_PARAMS){
 
 	assert(obj != NULL);
 	LIST_OK(obj)
 
-	if(obj->size > 0) return &(obj->nodes[obj->tail]);
+	if(obj->size > 0) return obj->nodes + obj->tail;
 	else return NULL;
 }
+//----------------------------------------------------------------------------------------//
 
-node* _ListAfter(list* obj, node* nod, META_PARAMS){
+// OK
+node* _ListAfter(list* obj, const node* nod, META_PARAMS){
+
+	assert(obj  != NULL);
+	assert(nod  != NULL);
+	LIST_OK(obj)
+
+	if(!node_in_list(obj, nod)) return NULL;
+
+	// после любого элемента кроме хвоста есть следующий элемент
+	if(nod != obj->nodes + obj->tail){
+		return obj->nodes + nod->next;
+	}
+	else return NULL;
+}
+//----------------------------------------------------------------------------------------//
+
+// OK
+node* _ListBefore(list* obj, const node* nod, META_PARAMS){
+
+	assert(obj  != NULL);
+	assert(nod  != NULL);
+	LIST_OK(obj)	
+
+	if(!node_in_list(obj, nod)) return NULL;
+
+	// после любого элемента кроме головы есть предыдущий элемент	
+	if(nod != obj->nodes + obj->head){
+		return obj->nodes + nod->prev];
+	}
+	else return NULL;
+}
+//----------------------------------------------------------------------------------------//
+
+// OK
+
+// TODO: если я захочу, чтобы массив всегда был отсортирован - тогда тут лучше сделать специальную функцию для сортировки,
+// а в pushback'e просто в конец массива вставлять
+ERR_CODE _PushFront(list* obj, const list_T val, META_PARAMS){
 
 	assert(obj != NULL);
 	LIST_OK(obj)
 
-	if(nod != ListBack(obj)) return &(obj->nodes[nod->next]);
-	else return NULL;
-}
-
-node* _ListBefore(list* obj, node* nod, META_PARAMS){
-
-	assert(obj != NULL);
-	LIST_OK(obj)
-	
-	if(nod != ListFront(obj)) return &(obj->nodes[nod->prev]);
-	else return NULL;
-}
-
-ERR_CODE _PushFront(list* obj, list_T val, META_PARAMS){
-
-	assert(obj != NULL);
-	LIST_OK(obj)
-
-	if(obj->size + 2 >= obj->capacity){
+	if(obj->size >= obj->capacity){
 		int resize_rez = (int)list_resize(obj, INCREASE_MODE);
 		
 		if(resize_rez != (int)ERR_CODE::OK){
@@ -128,30 +182,37 @@ ERR_CODE _PushFront(list* obj, list_T val, META_PARAMS){
 		}
 	}
 
-	int new_head_pos = get_ind_of_free(obj);
+	int new_head_pos = extract_free_ind(obj);
 
 	obj->nodes[new_head_pos].next = obj->head;
-	obj->nodes[new_head_pos].prev = 0;
+	obj->nodes[new_head_pos].prev = FREE_MATE;
 
-	if(obj->head != 0) obj->nodes[obj->head].prev = new_head_pos;
+	if(obj->head != FREE_MATE){
+		obj->nodes[obj->head].prev = new_head_pos;
+	}
 
 	obj->head = new_head_pos;
 	obj->nodes[obj->head].val = val;
 
-	if(obj->size == 0)	obj->tail = new_head_pos;
+	if(obj->size == 0){
+		obj->tail = new_head_pos;
+	}
 
 	obj->size++;
 
 	LIST_OK(obj)
 	return ERR_CODE::OK;
 }
+//----------------------------------------------------------------------------------------//
 
-ERR_CODE _PushBack(list* obj, list_T val, META_PARAMS){
+// OK
+
+ERR_CODE _PushBack(list* obj, const list_T val, META_PARAMS){
 
 	assert(obj != NULL);
 	LIST_OK(obj)
 
-	if(obj->size + 2 >= obj->capacity){
+	if(obj->size >= obj->capacity){
 		int resize_rez = (int)list_resize(obj, INCREASE_MODE);
 		
 		if(resize_rez != (int)ERR_CODE::OK){
@@ -159,43 +220,42 @@ ERR_CODE _PushBack(list* obj, list_T val, META_PARAMS){
 		}
 	}
 
-	int new_tail_pos = get_ind_of_free(obj);
+	int new_tail_pos = extract_free_ind(obj);
 
-	obj->nodes[new_tail_pos].next = 0;
+	obj->nodes[new_tail_pos].next = FREE_MATE;
 	obj->nodes[new_tail_pos].prev = obj->tail;
 
-	if(obj->tail != 0) obj->nodes[obj->tail].next = new_tail_pos;
+	if(obj->tail != FREE_MATE){
+		obj->nodes[obj->tail].next = new_tail_pos;
+	}
 
 	obj->tail = new_tail_pos;
 	obj->nodes[obj->tail].val = val;
 
-	if(obj->size == 0)	obj->head = new_tail_pos;
-
+	if(obj->size == 0){
+		obj->head = new_tail_pos;
+	}
 	obj->size++;
 
 	LIST_OK(obj)
 
 	return ERR_CODE::OK;
 }
+//----------------------------------------------------------------------------------------//
 
-ERR_CODE _ListInsert(list* obj, int pos, list_T val, META_PARAMS){
+// OK
+// да! будем сортить сразу после вставки/удаления. Тогда операция вставки будет за O(n * const) (radix), или за O(n) (count_sort)
+ERR_CODE _ListInsert(list* obj, const uint pos, const list_T val, META_PARAMS){
 
 	assert(obj != NULL);
 	LIST_OK(obj);
 
-	if(pos < 0 || pos >= obj->size) return ERR_CODE::INVALID_POS;
-
-	if(pos == 0){
-		PushFront(obj, val);
-		return ERR_CODE::OK;
-	}
-	
-	if(pos == obj->size - 1){
-		PushBack(obj, val);
-		return ERR_CODE::OK;
+	// если = obj->size, то вставляем в конец как pushback'e
+	if(pos < 0 || pos > obj->size){
+		return ERR_CODE::INVALID_POS;
 	}
 
-	if(obj->size + 2 >= obj->capacity){
+	if(obj->size >= obj->capacity){
 		int resize_rez = (int)list_resize(obj, INCREASE_MODE);
 		
 		if(resize_rez != (int)ERR_CODE::OK){
@@ -203,9 +263,10 @@ ERR_CODE _ListInsert(list* obj, int pos, list_T val, META_PARAMS){
 		}
 	}
 
+	// в SearchByPos должна вернуть сделать массив отсортированным, если он уже не отсортирован
 	int pos_of_prev = SearchByPos(obj, pos);
 
-	int new_node_pos = get_ind_of_free(obj);
+	int new_node_pos = extract_free_ind(obj);
 
 	obj->nodes[new_node_pos].next = obj->nodes[pos_of_prev].next;
 	obj->nodes[new_node_pos].prev = pos_of_prev;
@@ -218,16 +279,20 @@ ERR_CODE _ListInsert(list* obj, int pos, list_T val, META_PARAMS){
 	LIST_OK(obj)
 	return ERR_CODE::OK;
 }
+//----------------------------------------------------------------------------------------//
 
-ERR_CODE _ListRemove(list* obj, int pos, META_PARAMS){
+// OK
+ERR_CODE _ListRemove(list* obj, const uint pos, META_PARAMS){
 
 	assert(obj != NULL);
 
 	LIST_OK(obj);
 
-	if(pos < 0 || pos >= obj->size) return ERR_CODE::INVALID_POS;
+	if(pos < 0 || pos >= obj->size){
+		return ERR_CODE::INVALID_POS;
+	}
 
-	if(obj->size * REDUCE_RATIO <= obj->capacity){
+	if((obj->capacity >> REDUCE_RATIO) >= obj->size){
 		int resize_rez = (int)list_resize(obj, REDUCE_MODE);
 
 		if(resize_rez != (int)ERR_CODE::OK){
@@ -235,70 +300,74 @@ ERR_CODE _ListRemove(list* obj, int pos, META_PARAMS){
 		}
 	}
 
-	dump_nodes(obj);
 	int physical_pos = SearchByPos(obj, pos);
 
 	int pos_next = obj->nodes[physical_pos].next;
 	int pos_prev = obj->nodes[physical_pos].prev;
 
-	if(pos != 0){
+	// не уверен, нужен тест
+	if(pos_prev != FREE_MATE){
 		obj->nodes[pos_prev].next = pos_next;
 	}
 	else{
 		obj->head = pos_next;
 	}
 
-	if(pos != obj->size - 1){
+	if(pos_next != FREE_MATE){
 		obj->nodes[pos_next].prev = pos_prev;
 	}
 	else{
 		obj->tail = pos_prev;
 	}
 
-	obj->nodes[physical_pos].prev = -1;
-	obj->nodes[physical_pos].val  = POISON_VAL;
-	obj->nodes[physical_pos].next = 0;
-
-	if(obj->head_free == 0){
-		obj->head_free = physical_pos;
-		obj->tail_free = physical_pos;
+	if(obj->tail_free != FREE_MATE){
+		obj->nodes[obj->tail_free].next = physical_pos;
+		obj->nodes[physical_pos].prev   = obj->tail_free;
 	}
 	else{
-		obj->nodes[obj->tail_free].next 	= physical_pos;
-		obj->tail_free 						= physical_pos;
+		head_free                     = physical_pos;
+		obj->nodes[physical_pos].prev = FREE_MATE;
 	}
+
+	obj->tail_free                = physical_pos;
+	obj->nodes[physical_pos].val  = POISON_VAL;
+	obj->nodes[physical_pos].next = FREE_MATE;
 
 	obj->size--;
 
 	LIST_OK(obj)
 	return ERR_CODE::OK;
 }
+//----------------------------------------------------------------------------------------//
 
+// OK
 ERR_CODE _ListRemoveAll(list* obj, META_PARAMS){
 
 	assert(obj != NULL);
 	LIST_OK(obj)
 
-	for(int n_node = 1; n_node < obj->capacity; n_node++){
-
+	for(int n_node = 0; n_node < capacity; n_node++){
 		obj->nodes[n_node].val  = POISON_VAL;
-		obj->nodes[n_node].prev = FREE_INDICATION_VAL;
 		obj->nodes[n_node].next = n_node + 1;
+		obj->nodes[n_node].prev = FREE_MATE;
 	}
 
-	obj->nodes[obj->capacity - 1].next = 0;
+	obj->nodes[obj->capacity - 1].next = POINTER_TO_VOID;
 
 	obj->size = 0;
-	obj->head_free = 1;
+	obj->head_free = 0;
 	obj->tail_free = obj->capacity - 1;
 
-	obj->head = 0;
-	obj->tail = 0;
+	obj->head = FREE_MATE;
+	obj->tail = FREE_MATE;
+
+	obj->is_sorted = UNSORTED;
 
 	LIST_OK(obj)
 	
 	return ERR_CODE::OK;
 }
+//----------------------------------------------------------------------------------------//
 
 int _SearchByPos(list* obj, int pos, META_PARAMS){
 	
@@ -316,8 +385,11 @@ int _SearchByPos(list* obj, int pos, META_PARAMS){
 
 	return n_node;
 }
+//----------------------------------------------------------------------------------------//
 
-int _get_ind_of_free(list* obj, META_PARAMS){
+//----------------------LOCAL-FUNCTIONS-DEFINITIONS----------------------//
+
+int _extract_free_ind(list* obj, META_PARAMS){
 
 	assert(obj != NULL);
 	LIST_OK(obj);

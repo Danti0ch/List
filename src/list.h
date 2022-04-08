@@ -1,39 +1,63 @@
 #ifndef LIST_H_
 #define LIST_H_
 
-#define meow printf("[%d]: meoww\n", __LINE__);
-
 #include <stdint.h>
 #include <stdio.h>
+#include <stdint.h>
 #include "log.h"
 
+#define SUCCESSS 1
+
+// TODO: insert after/be4
+
+// при верификации проверяются все элементы списка
 #define LINEAR_CHECKS 1
+// при верификации проверяется тоолько основная иф=нформаиця списка
 #define SIMPLE_CHECKS 0
 
 #define DEBUG_MODE LINEAR_CHECKS
-#define TOTAL_DUMP 1
+
+/**
+ * @brief макрос для контроля того, как много данных мы хотим получить при дампе
+ * 
+ */
+#ifndef TOTAL_DUMP
+    #define TOTAL_DUMP 1
+#endif
 
 typedef int list_T;
-const char T_name[4] = "int";
+//const char T_name[4] = "int";
 
-const int FREE_INDICATION_VAL  = -1;
-const list_T POISON_VAL        = 0;
-const int FREE_MEM_POINTER_VAL = 7;
+// значит, что нет указателя на какого-то "соседа"
+const int FREE_MATE            = -1;
 
-const int VAL_SORTED = 1;
+// обозначение конца последовательности
+const int POINTER_TO_VOID      = -2;
+const list_T POISON_VAL        =  0;
 
-const int INCREASE_RATIO = 2;
-const int REDUCE_RATIO   = 8;
+// значит, пойзон освобожденной памяти
+const int FREE_MEM             =  0xDEADB1AF;
 
+// метка на то, что список отсортирован
+const uint SORTED   = 1;
+const uint UNSORTED = 0;
+
+const int INCREASE_RATIO = 1;
+const int REDUCE_RATIO   = 3;
+
+// режим для resize
 const int INCREASE_MODE  = 1;
 const int REDUCE_MODE    = 0;
 
+// default file names
 const char GVIZ_DOT_NAME[20] = "gviztmp.dot";
 const char GVIZ_HTM_NAME[20] = "tmp.htm";
 const char LOG_FILE_NAME[10] = "log.htm";
 
+// TODO: это что?
 const int CMD_STR_SIZE = sizeof(GVIZ_DOT_NAME) + sizeof(GVIZ_HTM_NAME) + 30;
 
+// list condition codes
 enum class VERIF_CODE{
     OK,
     CORRUPTED_MEM,
@@ -53,6 +77,7 @@ enum class ERR_CODE{
     INVALID_POS
 };
 
+// meta for debugging
 struct meta_info{
     char* obj_name;
     char* func_name;
@@ -69,68 +94,104 @@ struct node{
 struct list{
     node* nodes;
 
+    // индекс головы списка
     int head;
+
+    // индекс последнего элемента в списке
     int tail;
+
+    // индекс головы подсписка свободныъ элементов
     int head_free;
     int tail_free;
 
-    int capacity;
-    int size;
+    size_t capacity;
+    size_t size;
 
-    int is_sorted;
+    uint8_t is_sorted;
 };
 
 // использовать методы? https://www.quora.com/Can-structs-have-methods
+// скорее всего нет
+
 #define LOCATION __FILE__, __FUNCTION__, __LINE__
 
 #define META_PARAMS char const * obj_name, char const * file_name, char const * func_name, int const n_line
 
-#define ListConstructor(obj, cap) _ListConstructor((obj), (cap), #obj, LOCATION)
-
-#define ListDestructor(obj) _ListDestructor((obj), #obj, LOCATION)
-
-#define ListFront(obj) _ListFront((obj), #obj, LOCATION)
-
-#define ListBack(obj) _ListBack((obj), #obj, LOCATION)
-
-#define ListAfter(obj, nod) _ListAfter((obj), (nod), #obj, LOCATION)
-
-#define ListBefore(obj, nod) _ListBefore((obj), (nod), #obj, LOCATION)
-
-#define PushFront(obj, val) _PushFront((obj), (val), #obj, LOCATION)
-
-#define PushBack(obj, val) _PushBack((obj), (val), #obj, LOCATION)
-
-#define SearchByPos(obj, pos) _SearchByPos((obj), (pos), #obj, LOCATION)
-
-#define ListInsert(obj, pos, val) _ListInsert((obj), (pos), (val), #obj, LOCATION)
-
-#define ListRemove(obj, pos) _ListRemove((obj), (pos), #obj, LOCATION)
-
-#define ListRemoveAll(obj) _ListRemoveAll((obj), #obj, LOCATION)
+#define ListConstructor(obj, cap)       _ListConstructor((obj), (cap), #obj, LOCATION)
+#define ListDestructor(obj)             _ListDestructor((obj), #obj, LOCATION)
+#define ListFront(obj)                  _ListFront((obj), #obj, LOCATION)
+#define ListBack(obj)                   _ListBack((obj), #obj, LOCATION)
+#define ListAfter(obj, nod)             _ListAfter((obj), (nod), #obj, LOCATION)
+#define ListBefore(obj, nod)            _ListBefore((obj), (nod), #obj, LOCATION)
+#define PushFront(obj, val)             _PushFront((obj), (val), #obj, LOCATION)
+#define PushBack(obj, val)              _PushBack((obj), (val), #obj, LOCATION)
+#define SearchByPos(obj, pos)           _SearchByPos((obj), (pos), #obj, LOCATION)
+#define ListInsert(obj, pos, val)       _ListInsert((obj), (pos), (val), #obj, LOCATION)
+#define ListRemove(obj, pos)            _ListRemove((obj), (pos), #obj, LOCATION)
+#define ListRemoveAll(obj)              _ListRemoveAll((obj), #obj, LOCATION)
 
 
-
-
-ERR_CODE  _ListConstructor(list* obj, const int capacity, META_PARAMS);
+ERR_CODE  _ListConstructor(list* obj, const size_t capacity, META_PARAMS);
 
 ERR_CODE  _ListDestructor(list* obj, META_PARAMS);
 
+/**
+ * @brief возвращает указатель на голову списка
+ * 
+ * @param obj - указатель на список
+ * @return указатель на голову списка
+ */
 node* _ListFront(list* obj, META_PARAMS);
 
+/**
+ * @brief возвращает указатель на хвост списка
+ * 
+ * @param obj указатель на список
+ * @return указатель на хвост списка
+ */
 node* _ListBack(list* obj, META_PARAMS);
 
+/**
+ * @brief возвращает следующий элемент после указанного
+ * 
+ * @param obj указатель на список
+ * @param nod указатель на узел
+ * @return node* node->next указатель
+ */
 node* _ListAfter(list* obj, node* nod, META_PARAMS);
 
+/**
+ * @brief возвращает предыдущий элемент после указанного
+ * 
+ * @param obj указатель на список
+ * @param nod указатель на узел
+ * @return node* node->prev указатель
+ */
 node* _ListBefore(list* obj, node* nod, META_PARAMS);
 
+/**
+ * @brief вставляет элемент в голову списка
+ * 
+ * @param obj указатель на список
+ * @param val значение элемента
+ * @return код ошибки
+ */
 ERR_CODE _PushFront(list* obj, list_T val, META_PARAMS);
 
+/**
+ * @brief вставляет элемент в конец списка
+ * 
+ * @param obj указатель на список
+ * @param val значение элемента
+ * @return код ошибки
+ */
 ERR_CODE _PushBack(list* obj, list_T val, META_PARAMS);
 
-int _SearchByPos(list* obj, int pos, META_PARAMS);
-
 ERR_CODE _ListInsert(list* obj, int pos, list_T val, META_PARAMS);
+
+// insert after
+// insert before
+int _SearchByPos(list* obj, int pos, META_PARAMS);
 
 ERR_CODE _ListRemove(list* obj, int pos, META_PARAMS);
 
@@ -196,6 +257,6 @@ ERR_CODE _ListRemoveAll(list* obj, META_PARAMS);
     }                                                                   \
                                                                         \
 }
-#endif
+#endif //TOTAL_DUMP
 
-#endif
+#endif //LIST_H_
