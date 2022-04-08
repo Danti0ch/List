@@ -368,7 +368,7 @@ ERR_CODE _ListRemoveAll(list* obj, META_PARAMS){
 	return ERR_CODE::OK;
 }
 //----------------------------------------------------------------------------------------//
-
+//
 int _SearchByPos(list* obj, int pos, META_PARAMS){
 	
 	assert(obj != NULL);

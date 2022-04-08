@@ -109,7 +109,7 @@ struct list{
 
     uint8_t is_sorted;
 };
-
+//
 // использовать методы? https://www.quora.com/Can-structs-have-methods
 // скорее всего нет
 
