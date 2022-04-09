@@ -2,8 +2,6 @@
 #include <assert.h>
 #include <stdlib.h>
 #include <string.h>
-#include <windows.h>
-#include <sys\stat.h> 
 
 //----------------------LOCAL-FUNCTIONS-DECLARATION-----------------------//
 
@@ -23,9 +21,13 @@ void list_dump(list* obj, meta_info *meta, META_PARAMS);
 
 void dump_nodes(list* obj);
 
-void print_list(list* obj);
+void print_list(const list* obj);
 
 int get_file_size(const char* name);
+
+#if ENABLE_SORT
+void list_sort(list* obj);
+#endif
 
 /**
  * @brief ищет физический индекс по логическому
@@ -34,18 +36,16 @@ int get_file_size(const char* name);
  * @param pos логический индекс узла
  * @return физический индекс узла 
  */
-int search_phys_pos(list* obj, int pos, META_PARAMS);
+int search_phys_pos(list* obj, int pos);
 
 
 // checker that node is in list
-inline int node_in_list(list* obj, node* nod){
+inline int node_in_list(list* obj, const node* nod){
 	if(nod >= obj->nodes + obj->size || nod < obj->nodes){
 		return 0;
 	}
 	return 1;
 }
-
-typedef unsigned int uint;
 
 // вставляем в любом случае за единицу
 // в любом случае реализую is_sorted, сортировку, сверхбыструю адресацию по логическим адресам
@@ -56,7 +56,6 @@ typedef unsigned int uint;
 // TODO: более продуманые ресайзы
 // TODO: аккуратно проставить is_sorted = UNSORTED в методах вставки/удаления
 // TODO: сделать отдельный файл под верификацию??
-// TODO: сортировка
 // TODO: дамп в графвизе
 // TODO: юнит тесты
 
@@ -85,7 +84,7 @@ ERR_CODE _ListConstructor(list* obj, const size_t capacity, META_PARAMS){
 		obj->nodes[n_node].prev = FREE_MATE;
 	}
 
-	obj->nodes[capacity - 1].next = POINTER_TO_VOID;
+	obj->nodes[capacity - 1].next = FREE_MATE;
 
 #if ENABLE_SORT
 	obj->is_sorted 	= SORTED;
@@ -222,8 +221,9 @@ ERR_CODE _PushFront(list* obj, const list_T val, META_PARAMS){
 	obj->size++;
 
 	// может как-то попродуманее?
-	obj->sorted = UNSORTED;
-
+#if ENABLE_SORT
+	obj->is_sorted = UNSORTED;
+#endif
 	LIST_OK(obj)
 	return ERR_CODE::OK;
 }
@@ -299,10 +299,12 @@ ERR_CODE _ListInsert(list* obj, const uint pos, const list_T val, META_PARAMS){
 	obj->nodes[pos_of_prev].next 					= new_node_pos;
 	obj->nodes[obj->nodes[new_node_pos].next].prev 	= new_node_pos;
 
+#if ENABLE_SORT
 	// если вставка не в конец, то логич порядок != физическому
 	if(pos != obj->size){
 		obj->is_sorted = UNSORTED;
 	}
+#endif
 	obj->size++;
 
 	LIST_OK(obj)
@@ -354,7 +356,7 @@ ERR_CODE _ListRemove(list* obj, const uint pos, META_PARAMS){
 		obj->nodes[physical_pos].prev   = obj->tail_free;
 	}
 	else{
-		head_free                     = physical_pos;
+		obj->head_free                     = physical_pos;
 		obj->nodes[physical_pos].prev = FREE_MATE;
 	}
 
@@ -362,9 +364,11 @@ ERR_CODE _ListRemove(list* obj, const uint pos, META_PARAMS){
 	obj->nodes[physical_pos].val  = POISON_VAL;
 	obj->nodes[physical_pos].next = FREE_MATE;
 
+#if ENABLE_SORT
 	if(pos != obj->size){
-		obj->sorted = UNSORTED;
+		obj->is_sorted = UNSORTED;
 	}
+#endif
 
 	obj->size--;
 
@@ -379,7 +383,7 @@ ERR_CODE _ListRemoveAll(list* obj, META_PARAMS){
 	assert(obj != NULL);
 	LIST_OK(obj)
 
-	for(int n_node = 0; n_node < capacity; n_node++){
+	for(int n_node = 0; n_node < obj->capacity; n_node++){
 		obj->nodes[n_node].val  = POISON_VAL;
 		obj->nodes[n_node].next = n_node + 1;
 		obj->nodes[n_node].prev = FREE_MATE;
@@ -394,8 +398,9 @@ ERR_CODE _ListRemoveAll(list* obj, META_PARAMS){
 	obj->head = FREE_MATE;
 	obj->tail = FREE_MATE;
 
+#if ENABLE_SORT
 	obj->is_sorted = SORTED;
-
+#endif
 	LIST_OK(obj)
 	
 	return ERR_CODE::OK;
@@ -413,11 +418,26 @@ int search_phys_pos(list* obj, int pos){
 	// проверка на корректность pos
 	if(pos < 0 || pos >= obj->size) return FREE_MATE;
 
+#if ENABLE_SORT
 	// если is_sorted, то логический pos сооотв. физическому
 	if(obj->is_sorted == UNSORTED){
 		list_sort(obj);
 	}
 	return pos;
+#else
+	int counter = 0;
+
+	int n_node = obj->head;
+
+	while((counter < pos) && (n_node != FREE_MATE)){
+		counter++;
+		n_node = obj->nodes[n_node].next;
+	}
+
+	return n_node;
+#endif
+
+
 }
 //----------------------------------------------------------------------------------------//
 
@@ -469,7 +489,7 @@ ERR_CODE _list_resize(list* obj, int mode, META_PARAMS){
 		obj->nodes[new_capacity - 1].next = FREE_MATE;
 
 		if(obj->tail_free != FREE_MATE){
-			obj->nodes[tail_free].next = obj->capacity;
+			obj->nodes[obj->tail_free].next = obj->capacity;
 			obj->tail_free = new_capacity - 1;
 		}
 		else{
@@ -546,32 +566,47 @@ void nodes_swap(node* a, node* b){
 }
 //----------------------------------------------------------------------------------------//
 
+#if ENABLE_SORT
 
-/*
-void _SortList(list* obj, META_PARAMS){
+// OK
+// TODO: обработка in-place сортировки, когда не можем вылелить вспомогательный массив
+void list_sort(list* obj){
 
 	assert(obj != NULL);
 
-	int *swap_arr = (int*)calloc(obj->capacity, sizeof(int));
+	node* swap_arr = (node*)calloc(obj->capacity, sizeof(node));
 
-	swap_arr[0] = 0;
+	if(obj->size != 0){
+		int cur_n_node = obj->head;
 
-	int counter = 1;
-
-	for(int n_node = obj->head; n_node != 0; n_node = obj->nodes[n_node].next, counter++){
-		swap_arr[counter] = n_node;
+		for(int n_swap_node = 0; n_swap_node < obj->size; n_swap_node++, cur_n_node = obj->nodes[cur_n_node].next){
+			swap_arr[n_swap_node].val  = obj->nodes[cur_n_node].val;
+			swap_arr[n_swap_node].next = n_swap_node + 1;
+			swap_arr[n_swap_node].prev = n_swap_node - 1;
+		}
+		swap_arr[0].prev             = FREE_MATE;
+		swap_arr[obj->size - 1].next = FREE_MATE;
 	}
 
-	for(int n_node = 0; n_node < counter; n_node++){
+	if(obj->size != obj->capacity){
+		int cur_n_node = obj->head_free;
 
+		for(int n_swap_node = obj->size; n_swap_node < obj->capacity; n_swap_node++, cur_n_node = obj->nodes[cur_n_node].next){
+			swap_arr[n_swap_node].val  = POISON_VAL;
+			swap_arr[n_swap_node].next = n_swap_node + 1;
+			swap_arr[n_swap_node].prev = FREE_MATE;
+		}
+		swap_arr[obj->capacity - 1].next = FREE_MATE;
 	}
 
-	qsort(obj->nodes + 1, obj->capacity, sizeof(node), node_cmp);
+	free(obj->nodes);
+	obj->nodes = swap_arr;
+	obj->is_sorted = SORTED;
 
 	return;
 }
-*/
-
+//----------------------------------------------------------------------------------------//
+#endif //ENABLE_SORT
 // OK
 
 VERIF_CODE list_verification(list* obj){
@@ -582,7 +617,7 @@ VERIF_CODE list_verification(list* obj){
 		return VERIF_CODE::CORRUPTED_MEM;
 	}
 
-	if(obj->head >= obj->capacity){
+	if(obj->head != FREE_MATE && obj->head >= obj->capacity){
 		return VERIF_CODE::HEAD_INVALID;
 	}
 	
@@ -606,14 +641,15 @@ VERIF_CODE list_verification(list* obj){
 		int n_node = obj->head;
 		int next_ind = obj->nodes[n_node].next;
 		
-		for(; next_ind != FREE_MATE; visited[n_node] = 1, n_node = obj->nodes[n_node].next){
+		for(; next_ind != FREE_MATE; visited[n_node] = 1, n_node = next_ind, next_ind = obj->nodes[next_ind].next){
 
 			if(visited[n_node]){
 				free(visited);
 				return VERIF_CODE::CORRUPTED_INJECTIVITY;
 			}
 
-			if(obj->nodes[n_node].prev == FREE_MATE){
+			// TODO: optimize ?
+			if(n_node != obj->head && obj->nodes[n_node].prev == FREE_MATE){
 				free(visited);
 				return VERIF_CODE::PREV_CORRUPTED;
 			}
@@ -645,10 +681,10 @@ VERIF_CODE list_verification(list* obj){
 			return VERIF_CODE::HEAD_FREE_CORRUPTED;
 		}
 
-		int n_node = head_free;
-		int next_ind = obj->nodes[n_node];
+		int n_node = obj->head_free;
+		int next_ind = obj->nodes[n_node].next;
 
-		for(; next_ind != FREE_MATE; n_node = obj->nodes[n_node].next){
+		for(; next_ind != FREE_MATE; visited[n_node] = 1, n_node = next_ind, next_ind = obj->nodes[next_ind].next){
 
 			if(obj->nodes[n_node].prev != FREE_MATE){
 				free(visited);
@@ -666,7 +702,7 @@ VERIF_CODE list_verification(list* obj){
 			}
 		}
 
-		if(tail_free != n_node){
+		if(obj->tail_free != n_node){
 			free(visited);
 			return VERIF_CODE::TAIL_FREE_CORRUPTED;
 		}
@@ -678,6 +714,7 @@ VERIF_CODE list_verification(list* obj){
 	for(int n_node = 0; n_node < obj->capacity; n_node++){
 
 		if(!visited[n_node]){
+			printf("%d\n", n_node);
 			free(visited);
 			return VERIF_CODE::VOID_ELEMENT;
 		}
@@ -696,9 +733,11 @@ void list_dump(list* obj, meta_info *meta, META_PARAMS){
 	assert(obj  != NULL);
 	assert(meta != NULL);
 
+#if ENABLE_SORT
+
 	to_log("<br><br>Dump called from function %s(%d)<br>"
 		   "That was called from file %s, function %s(%d)<br>"
-		   "[#] list %s<%s><br>"
+		   "[#] list %s<int><br>"
 		   "<br>"
 		   "capacity  = %lu<br>"
 		   "size      = %lu<br>"
@@ -709,19 +748,38 @@ void list_dump(list* obj, meta_info *meta, META_PARAMS){
 		   "is_sorted = %u<br>"
 		   "<br>",
 		   func_name, n_line, meta->file_name, meta->func_name, meta->n_line,
-		   meta->obj_name, T_name,
+		   meta->obj_name,
 		   obj->capacity, obj->size, obj->head, obj->tail, obj->head_free, obj->tail_free, obj->is_sorted);
+
+#else
+		to_log("<br><br>Dump called from function %s(%d)<br>"
+		   "That was called from file %s, function %s(%d)<br>"
+		   "[#] list %s<int><br>"
+		   "<br>"
+		   "capacity  = %lu<br>"
+		   "size      = %lu<br>"
+		   "head      = %d<br>"
+		   "tail 	  = %d<br>"
+		   "head_free = %d<br>"
+		   "tail_free = %d<br>"
+		   "<br>",
+		   func_name, n_line, meta->file_name, meta->func_name, meta->n_line,
+		   meta->obj_name,
+		   obj->capacity, obj->size, obj->head, obj->tail, obj->head_free, obj->tail_free);
+
+#endif // ENABLE_SORT
 
 	dump_nodes(obj);
 
 	to_log("<br><br>");
-	print_list(obj);
-	to_log("<br><br>");
+	//print_list(obj);
+	//to_log("<br><br>");
 	
 	return;
 }
 //----------------------------------------------------------------------------------------//
 
+// TODO: для пользовательского дампа добавить аргумент - функцию вывода нод.val
 // OK
 void dump_nodes(list* obj){
 	

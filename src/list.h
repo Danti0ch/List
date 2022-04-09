@@ -8,6 +8,8 @@
 
 #define SUCCESSS 1
 
+typedef unsigned int uint;
+
 // TODO: insert after/be4
 
 // при верификации проверяются все элементы списка
@@ -43,9 +45,11 @@ const list_T POISON_VAL        =  0;
 // значит, пойзон освобожденной памяти
 const int FREE_MEM             =  0xDEADB1AF;
 
+#if ENABLE_SORT
 // метка на то, что список отсортирован
 const uint SORTED   = 1;
 const uint UNSORTED = 0;
+#endif
 
 const int INCREASE_RATIO = 1;
 const int REDUCE_RATIO   = 3;
@@ -117,7 +121,9 @@ struct list{
     size_t capacity;
     size_t size;
 
+#if ENABLE_SORT
     uint8_t is_sorted;
+#endif
 };
 //
 // использовать методы? https://www.quora.com/Can-structs-have-methods

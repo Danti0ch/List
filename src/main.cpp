@@ -9,6 +9,9 @@ int main(){
 
 	ListConstructor(&lst, 10);
 
+	for(int i = 0; i < 6; i++){
+		PushBack(&lst, i + 1);
+	}
 	close_log_file();
 	return 0;
 }
