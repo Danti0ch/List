@@ -1,5 +1,7 @@
 #include "log.h"
 
+static FILE* log_file = NULL;
+
 void open_log_file(const char* name){
 
 	assert(name != NULL);

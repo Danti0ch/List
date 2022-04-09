@@ -25,6 +25,11 @@
     #define TOTAL_DUMP 1
 #endif
 
+#ifndef ENABLE_SORT
+    #define ENABLE_SORT 0
+#endif
+
+#
 typedef int list_T;
 //const char T_name[4] = "int";
 
@@ -62,13 +67,18 @@ enum class VERIF_CODE{
     OK,
     CORRUPTED_MEM,
     HEAD_INVALID,
-    INVALID_FIRST_ELEM,
+    TAIL_INVALID,
+    HEAD_FREE_CORRUPTED,
+    TAIL_FREE_CORRUPTED,
+    //INVALID_FIRST_ELEM,
     CORRUPTED_CAP,
     CORRUPTED_SIZE,
-    INDICATION_TO_EMPTY_ELEM,
+    PREV_CORRUPTED,
     CORRUPTED_INJECTIVITY,
     CORRUPTED_LINK,
-    INVALID_FREE_ELEM_POINTER
+    INVALID_FREE_ELEM_POINTER,
+    FREE_CORRUPTED,
+    VOID_ELEMENT                       // means that we have element in list that is not free and not busy
 };
 
 enum class ERR_CODE{
@@ -125,7 +135,6 @@ struct list{
 #define ListBefore(obj, nod)            _ListBefore((obj), (nod), #obj, LOCATION)
 #define PushFront(obj, val)             _PushFront((obj), (val), #obj, LOCATION)
 #define PushBack(obj, val)              _PushBack((obj), (val), #obj, LOCATION)
-#define SearchByPos(obj, pos)           _SearchByPos((obj), (pos), #obj, LOCATION)
 #define ListInsert(obj, pos, val)       _ListInsert((obj), (pos), (val), #obj, LOCATION)
 #define ListRemove(obj, pos)            _ListRemove((obj), (pos), #obj, LOCATION)
 #define ListRemoveAll(obj)              _ListRemoveAll((obj), #obj, LOCATION)
@@ -187,11 +196,18 @@ ERR_CODE _PushFront(list* obj, list_T val, META_PARAMS);
  */
 ERR_CODE _PushBack(list* obj, list_T val, META_PARAMS);
 
+/**
+ * @brief ищет физический индекс pos с помощью метлда SearchBYPos
+ * 
+ * @param obj 
+ * @param pos 
+ * @param val 
+ * @return ERR_CODE 
+ */
 ERR_CODE _ListInsert(list* obj, int pos, list_T val, META_PARAMS);
 
 // insert after
 // insert before
-int _SearchByPos(list* obj, int pos, META_PARAMS);
 
 ERR_CODE _ListRemove(list* obj, int pos, META_PARAMS);
 
@@ -199,7 +215,7 @@ ERR_CODE _ListRemoveAll(list* obj, META_PARAMS);
 
 // int is_sorted
 
-#define LIST_DUMP(obj, meta) list_dump((obj), (meta), LOCATION);
+#define LIST_DUMP(obj, meta) list_dump((obj), (meta), #obj, LOCATION);
 
 #if TOTAL_DUMP == 0
 #define LIST_OK(obj)                                \
